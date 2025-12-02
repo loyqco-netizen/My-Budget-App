@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>预算惩罚记账本</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --danger: #ef4444;
+            --success: #10b981;
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 450px;
+            background: var(--card-bg);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            /* 调整为 min-height，允许内容溢出时容器可以扩展 */
+            min-height: 100vh;
+            position: relative;
+            transition: box-shadow 0.3s ease;
+        }
+
+        /* 需求1 & 4：超支时的红色边框样式 */
+        .app-container.over-budget {
+            border: 4px solid var(--danger);
+            animation: pulse-red 2s infinite;
+        }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        /* 顶部 Header - 修正结构后，作为整个 app-container 的头部 */
+        .app-header {
+            padding: 20px;
+            background: var(--card-bg);
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; color: #1f2937; }
+        .date-display { font-size: 0.8rem; color: #6b7280; margin-top: 5px; }
+
+        /* 内容区域 */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .hidden { display: none !important; }
+
+        /* 卡片样式 */
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e5e7eb;
+        }
+
+        .stat-label { font-size: 0.85rem; color: #6b7280; }
+        .stat-value { font-size: 1.8rem; font-weight: bold; margin: 5px 0; }
+        .stat-value.red { color: var(--danger); }
+        .stat-value.green { color: var(--success); }
+
+        /* 需求3：预算设置 */
+        .budget-control {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #eff6ff;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px dashed var(--primary);
+            margin-bottom: 15px; /* 添加间隔 */
+        }
+        .budget-input {
+            border: none;
+            background: transparent;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--primary);
+            width: 100px;
+            text-align: right;
+        }
+        .budget-input:focus { outline: none; border-bottom: 2px solid var(--primary); }
+
+        /* 列表样式 */
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .list-item:last-child { border-bottom: none; }
+        .item-desc { font-weight: 500; }
+        .item-date { font-size: 0.75rem; color: #9ca3af; }
+
+        /* 需求4：惩罚区域 */
+        .penalty-zone {
+            background-color: #fef2f2;
+            border: 2px solid var(--danger);
+            color: var(--danger);
+        }
+
+        /* 底部输入框 */
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        input[type="text"], input[type="number"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+        }
+        button.add-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        /* 底部导航 */
+        .nav-bar {
+            display: flex;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .nav-item {
+            flex: 1;
+            text-align: center;
+            padding: 15px;
+            cursor: pointer;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        .nav-item.active {
+            color: var(--primary);
+            border-top: 2px solid var(--primary);
+        }
+        .nav-item.active-income {
+            color: var(--success);
+            border-top-color: var(--success);
+        }
+
+        /* 清空数据按钮 */
+        .reset-btn {
+            margin-top: 30px;
+            width: 100%;
+            padding: 10px;
+            background: #e5e7eb;
+            color: #6b7280;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container" id="appContainer">
+    
+    <div class="app-header">
+        <h1>💸 预算惩罚记账本</h1>
+        <div class="date-display" id="currentDate"></div>
+    </div>
+    
+    <div id="expenseTab" class="content">
+        <div class="budget-control">
+            <div>
+                <div class="stat-label">本月预算 (建议1号设定)</div>
+                <div style="font-size:0.8rem; color:var(--primary);">¥ <input type="number" id="budgetInput" class="budget-input" value="5000" oninput="updateData()"></div>
+            </div>
+            <div style="text-align: right;">
+                <div class="stat-label">预算剩余</div>
+                <div id="budgetLeft" style="font-weight:bold;">¥0</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="stat-label">当前已支出</div>
+            <div class="stat-value" id="totalExpenseDisplay">¥0.00</div>
+            <div id="overBudgetAlert" style="color: var(--danger); font-size: 0.9rem; display: none;">
+                ⚠️ 已超支！惩罚已计入收入页
+            </div>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="expenseDesc" placeholder="支出项目 (如: 咖啡)">
+            <input type="number" id="expenseAmount" placeholder="金额">
+            <button class="add-btn" onclick="addExpense()">记账</button>
+        </div>
+
+        <h3 style="margin-top:20px; font-size:1rem;">最近支出</h3>
+        <div id="expenseList">
+            </div>
+
+        <button class="reset-btn" onclick="clearAllData()">⚠️ 清空所有数据 (新月份开始)</button>
+    </div>
+
+    <div id="incomeTab" class="content hidden">
+        <div class="date-display" style="margin-bottom: 15px;">实际到手 = 收入 - 超支罚款</div>
+
+        <div class="card">
+            <div class="stat-label">原始总收入</div>
+            <div class="stat-value green" id="rawIncomeDisplay">¥0.00</div>
+        </div>
+
+        <div class="card penalty-zone" id="penaltyCard" style="display:none;">
+            <div class="stat-label" style="color:var(--danger)">⚠️ 预算超支扣款 (惩罚)</div>
+            <div class="stat-value" id="penaltyDisplay">-¥0.00</div>
+        </div>
+
+        <div class="card" style="background: #f0fdf4; border-color: #bbf7d0;">
+            <div class="stat-label">实际净收入</div>
+            <div class="stat-value" id="netIncomeDisplay">¥0.00</div>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="incomeDesc" placeholder="收入来源 (如: 工资)">
+            <input type="number" id="incomeAmount" placeholder="金额">
+            <button class="add-btn" style="background:var(--success)" onclick="addIncome()">入账</button>
+        </div>
+
+        <h3 style="margin-top:20px; font-size:1rem;">收入记录</h3>
+        <div id="incomeList">
+            </div>
+    </div>
+
+    <div class="nav-bar">
+        <div class="nav-item active" id="navExpense" onclick="switchTab('expense')">
+            支出
+        </div>
+        <div class="nav-item" id="navIncome" onclick="switchTab('income')">
+            收入
+        </div>
+    </div>
+</div>
+
+<script>
+    // 初始化数据
+    let data = JSON.parse(localStorage.getItem('budgetApp_v1')) || {
+        budget: 5000,
+        expenses: [],
+        income: []
+    };
+
+    const container = document.getElementById('appContainer');
+    document.getElementById('currentDate').innerText = new Date().toLocaleDateString();
+
+    // 渲染页面
+    function render() {
+        // 1. 计算总数
+        const totalExpense = data.expenses.reduce((sum, item) => sum + item.amount, 0);
+        const totalIncome = data.income.reduce((sum, item) => sum + item.amount, 0);
+        const budget = parseFloat(data.budget);
+        
+        // 2. 核心逻辑：计算超支
+        const isOverBudget = totalExpense > budget;
+        const overAmount = isOverBudget ? (totalExpense - budget) : 0;
+        const netIncome = totalIncome - overAmount;
+
+        // 3. 更新支出界面
+        // 确保预算输入框显示的是数据中的最新预算值
+        document.getElementById('budgetInput').value = budget; 
+        document.getElementById('totalExpenseDisplay').innerText = `¥${totalExpense.toFixed(2)}`;
+        
+        const left = budget - totalExpense;
+        const leftEl = document.getElementById('budgetLeft');
+        leftEl.innerText = left >= 0 ? `¥${left.toFixed(2)}` : `超支 ¥${Math.abs(left).toFixed(2)}`;
+        leftEl.style.color = left >= 0 ? 'var(--success)' : 'var(--danger)';
+
+        // 需求1：红色框警报
+        if (isOverBudget) {
+            container.classList.add('over-budget');
+            document.getElementById('overBudgetAlert').style.display = 'block';
+        } else {
+            container.classList.remove('over-budget');
+            document.getElementById('overBudgetAlert').style.display = 'none';
+        }
+
+        // 4. 更新收入界面 (需求4：扣除逻辑)
+        document.getElementById('rawIncomeDisplay').innerText = `¥${totalIncome.toFixed(2)}`;
+        
+        const penaltyCard = document.getElementById('penaltyCard');
+        if (overAmount > 0) {
+            penaltyCard.style.display = 'block';
+            document.getElementById('penaltyDisplay').innerText = `-¥${overAmount.toFixed(2)}`;
+        } else {
+            penaltyCard.style.display = 'none';
+        }
+
+        document.getElementById('netIncomeDisplay').innerText = `¥${netIncome.toFixed(2)}`;
+
+        // 5. 渲染列表
+        renderList('expenseList', data.expenses);
+        renderList('incomeList', data.income);
+
+        // 保存数据
+        localStorage.setItem('budgetApp_v1', JSON.stringify(data));
+    }
+
+    function renderList(elementId, items) {
+        const list = document.getElementById(elementId);
+        list.innerHTML = '';
+        items.slice().reverse().forEach((item, index) => { // 倒序显示
+            const div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerHTML = `
+                <div>
+                    <div class="item-desc">${item.desc}</div>
+                    <div class="item-date">${item.date}</div>
+                </div>
+                <div style="font-weight:bold; color: ${elementId === 'expenseList' ? 'var(--danger)' : 'var(--success)'}">
+                    ${elementId === 'expenseList' ? '-' : '+'}¥${item.amount.toFixed(2)}
+                </div>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    // 操作函数
+    function addExpense() {
+        const desc = document.getElementById('expenseDesc').value.trim();
+        const amount = parseFloat(document.getElementById('expenseAmount').value);
+        
+        // 优化：检查描述、金额和金额是否为正数
+        if (!desc || isNaN(amount) || amount <= 0) {
+            return alert('请输入正确的支出项目和正数金额');
+        }
+
+        data.expenses.push({
+            desc,
+            amount,
+            date: new Date().toLocaleString()
+        });
+        
+        document.getElementById('expenseDesc').value = '';
+        document.getElementById('expenseAmount').value = '';
+        render();
+    }
+
+    function addIncome() {
+        const desc = document.getElementById('incomeDesc').value.trim();
+        const amount = parseFloat(document.getElementById('incomeAmount').value);
+        
+        // 优化：检查描述、金额和金额是否为正数
+        if (!desc || isNaN(amount) || amount <= 0) {
+            return alert('请输入正确的收入来源和正数金额');
+        }
+
+        data.income.push({
+            desc,
+            amount,
+            date: new Date().toLocaleString()
+        });
+
+        document.getElementById('incomeDesc').value = '';
+        document.getElementById('incomeAmount').value = '';
+        render();
+    }
+
+    function updateData() {
+        const newBudget = parseFloat(document.getElementById('budgetInput').value);
+        if (!isNaN(newBudget) && newBudget >= 0) { // 预算不能为负数
+            data.budget = newBudget;
+            render();
+        }
+    }
+
+    function clearAllData() {
+        if(confirm("确定要清空所有数据开始新的一月吗？这无法撤销！")) {
+            data = { budget: 5000, expenses: [], income: [] };
+            render();
+        }
+    }
+
+    // 界面切换
+    function switchTab(tab) {
+        if (tab === 'expense') {
+            document.getElementById('expenseTab').classList.remove('hidden');
+            document.getElementById('incomeTab').classList.add('hidden');
+            document.getElementById('navExpense').classList.add('active');
+            document.getElementById('navIncome').classList.remove('active');
+            document.getElementById('navIncome').classList.remove('active-income');
+        } else {
+            document.getElementById('expenseTab').classList.add('hidden');
+            document.getElementById('incomeTab').classList.remove('hidden');
+            document.getElementById('navExpense').classList.remove('active');
+            // 收入 Tab 使用两种 active 样式，实现边框和文字颜色不同
+            document.getElementById('navIncome').classList.add('active'); 
+            document.getElementById('navIncome').classList.add('active-income');
+        }
+    }
+
+    // 启动
+    render();
+</script>
+
+</body>
+</html>
